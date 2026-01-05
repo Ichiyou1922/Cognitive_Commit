@@ -125,8 +125,12 @@ ipcMain.handle('get-config', async () => {
 })
 
 ipcMain.handle('save-config', async (_event, config) => {
-  const success = saveConfigToFile(config)
-  if (success && config.savePath && config.gitRepoUrl) {
+  const saveResult = saveConfigToFile(config)
+  if (!saveResult) {
+    return { success: false, error: 'Failed to write config file' }
+  }
+
+  if (config.savePath) {
     // Git連携のセットアップ
     try {
       if (!fs.existsSync(config.savePath)) {
@@ -136,42 +140,75 @@ ipcMain.handle('save-config', async (_event, config) => {
       const git = simpleGit(config.savePath)
       
       // init if needed
-      if (!fs.existsSync(path.join(config.savePath, '.git'))) {
+      const isRepo = await git.checkIsRepo()
+      if (!isRepo) {
         await git.init()
       }
 
-      // remote add or set-url
-      const remotes = await git.getRemotes(true)
-      const origin = remotes.find(r => r.name === 'origin')
-      
-      if (origin) {
-        if (origin.refs.push !== config.gitRepoUrl) {
-          await git.remote(['set-url', 'origin', config.gitRepoUrl])
-        }
-      } else {
-        await git.addRemote('origin', config.gitRepoUrl)
+      // ブランチ名を main に強制
+      await git.raw(['branch', '-M', 'main'])
+
+      // コミット用ユーザー設定 (未設定によるエラー回避)
+      try {
+        await git.addConfig('user.name', 'Cognitive Commit App')
+        await git.addConfig('user.email', 'app@cognitive-commit.local')
+      } catch (e) {
+        console.warn('Failed to set git config:', e)
       }
-      
-      // 初回連携時にfetchしてみる (オプション)
-      // await git.fetch() 
+
+      // ConfigにURLがあれば設定
+      if (config.gitRepoUrl) {
+        // remote add or set-url
+        const remotes = await git.getRemotes(true)
+        const origin = remotes.find(r => r.name === 'origin')
+        
+        if (origin) {
+          if (origin.refs.push !== config.gitRepoUrl) {
+            await git.remote(['set-url', 'origin', config.gitRepoUrl])
+          }
+        } else {
+          await git.addRemote('origin', config.gitRepoUrl)
+        }
+        
+        // 接続テスト (fetch)
+        try {
+          // リモートが空の場合はこれで失敗するが、それは正常な場合もある
+          await git.fetch('origin', 'main', { '--depth': '1' }) 
+        } catch (e) {
+          console.warn('Git fetch failed (likely empty repo or auth error):', e)
+          const errorMsg = e instanceof Error ? e.message : String(e)
+          // "couldn't find remote ref main" は空リポジトリの典型的なエラーなので許容する
+          if (errorMsg.includes("couldn't find remote ref") || errorMsg.includes("fatal: couldn't find remote ref")) {
+             return { success: true } // 空リポジトリとみなして成功を返す
+          }
+          // その他のエラー (認証失敗など) は警告として返す
+          return { success: true, error: `Config saved, but connection check failed (Repo might be empty or Auth failed): ${errorMsg}` }
+        }
+      }
       
     } catch (e) {
       console.error('Git setup failed:', e)
-      // Config保存は成功したことにすうるが、エラーログは残す
+      return { success: false, error: `Git setup failed: ${e instanceof Error ? e.message : String(e)}` }
     }
   }
-  return success
+  return { success: true }
 })
 
 ipcMain.handle('save-log', async (_event, data) => {
+  console.log('--- save-log handler called ---')
+  console.log('Data:', JSON.stringify(data, null, 2))
   try {
     const config = loadConfig()
+    console.log('Loaded Config:', JSON.stringify(config, null, 2))
+
     if (!config.savePath) {
         throw new Error('Save path is not configured.')
     }
     const dirPath = config.savePath // ユーザー設定のパスを直接使う
+    console.log('Target directory:', dirPath)
     
     if (!fs.existsSync(dirPath)) {
+      console.log('Directory does not exist, creating...')
       fs.mkdirSync(dirPath, { recursive: true })
     }
 
@@ -180,6 +217,10 @@ ipcMain.handle('save-log', async (_event, data) => {
     if (!fs.existsSync(path.join(dirPath, '.git'))) {
       await git.init()
     }
+    
+    // Config設定 (念のため毎回確認)
+    await git.addConfig('user.name', 'Cognitive Commit App')
+    await git.addConfig('user.email', 'app@cognitive-commit.local')
 
     const safeTopic = data.topic.replace(/[^a-zA-Z0-9]/g, '_')
     const now = new Date()
@@ -207,14 +248,25 @@ ${data.nextAction}
 
     console.log('Starting Git operations...')
     await git.add('.')
-    await git.commit(`[Study] ${data.topic} (${data.duration}min)`)
+    const commitResult = await git.commit(`[Study] ${data.topic} (${data.duration}min)`)
+    console.log('Commit result:', commitResult)
+
+    // Commit後にブランチ名を強制変更 (Commitがないと branch -M が失敗する環境があるため)
+    try {
+        await git.raw(['branch', '-M', 'main'])
+    } catch (e) {
+        console.warn('Failed to rename branch to main:', e)
+    }
 
     // ConfigにURLがあればPushを試みる
     if (config.gitRepoUrl) {
         try {
-            await git.push('origin', 'main')
+            // -u オプションをつけて push
+            console.log('Pushing to remote...')
+            await git.push(['-u', 'origin', 'main'])
         } catch (e) {
-            console.warn('Git push failed (possibly due to auth or non-main branch):', e)
+            console.warn('Git push failed:', e)
+            return { success: true, path: filePath, error: `Saved locally, but Git Push failed: ${e instanceof Error ? e.message : String(e)}` }
         }
     }
 

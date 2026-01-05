@@ -37,7 +37,7 @@ declare global {
       getLogs: () => Promise<Array<HistoryItem>>
       selectDirectory: () => Promise<string | null>
       getConfig: () => Promise<Config>
-      saveConfig: (config: Config) => Promise<boolean>
+      saveConfig: (config: Config) => Promise<{ success: boolean; error?: string }>
     }
   }
 }
@@ -100,11 +100,11 @@ const WelcomeScreen = ({ onComplete }: { onComplete: () => void }) => {
       alert('Please select a save location.')
       return
     }
-    const success = await window.api.saveConfig({ savePath, gitRepoUrl })
-    if (success) {
+    const result = await window.api.saveConfig({ savePath, gitRepoUrl })
+    if (result.success) {
       onComplete()
     } else {
-      alert('Failed to save configuration.')
+      alert(`Failed to save configuration: ${result.error || 'Unknown error'}`)
     }
   }
 
@@ -169,8 +169,12 @@ const SettingsScreen = ({ onClose }: { onClose: () => void }) => {
   }
 
   const handleSave = async () => {
-    await window.api.saveConfig({ savePath, gitRepoUrl })
-    onClose()
+    const result = await window.api.saveConfig({ savePath, gitRepoUrl })
+    if (result.success) {
+      onClose()
+    } else {
+      alert(`Failed to save: ${result.error}`)
+    }
   }
 
   return (
@@ -269,7 +273,11 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
     }
     const result = await window.api.saveLog(logData)
     if (result.success) {
-      alert(`Saved!\nPath: ${result.path}`)
+      let msg = `Saved!\nPath: ${result.path}`
+      if (result.error) {
+        msg += `\n\n⚠️ Git Sync Warning:\n${result.error}`
+      }
+      alert(msg)
       setAcquisition('')
       setDebt('')
       setNextAction('')
@@ -286,17 +294,18 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif', color: '#333', position: 'relative' }}>
-      <button
-        onClick={onOpenSettings}
-        style={{ position: 'absolute', top: '20px', right: '20px', padding: '5px 10px', cursor: 'pointer' }}
-      >
-        ⚙️ Settings
-      </button>
+    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif', color: '#333', position: 'relative', paddingBottom: '60px' }}>
 
       <h1 style={{ textAlign: 'center', borderBottom: '2px solid #333', paddingBottom: '10px' }}>
         Cognitive Commit
       </h1>
+
+      <button
+        onClick={onOpenSettings}
+        style={{ position: 'fixed', bottom: '20px', left: '20px', padding: '10px 15px', cursor: 'pointer', zIndex: 100, backgroundColor: '#f8f9fa', border: '1px solid #ddd', borderRadius: '5px' }}
+      >
+        ⚙️ Settings
+      </button>
 
       {mode === 'idle' && (
         <div style={{ textAlign: 'center', marginTop: '30px' }}>
