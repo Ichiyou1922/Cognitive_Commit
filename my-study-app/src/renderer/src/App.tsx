@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, TooltipProps } from 'recharts'
+import bellSoundUrl from './assets/bell.ogg'
 
 // --- Types ---
 interface LogData {
@@ -238,17 +239,21 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
     fetchLogs()
   }, [mode])
 
+
   useEffect(() => {
     if (mode === 'running') {
       if (timeLeft > 0) {
         const timer = setTimeout(() => setTimeLeft((p) => p - 1), 1000)
         return () => clearTimeout(timer)
       } else {
+        const audio = new Audio(bellSoundUrl)
+        audio.play().catch((e) => console.error('Failed to play sound:', e))
         setMode('review')
       }
     }
     return undefined
   }, [mode, timeLeft])
+
 
   const handleStart = () => {
     const min = parseInt(inputMinutes, 10)
