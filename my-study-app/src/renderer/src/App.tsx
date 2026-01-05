@@ -144,8 +144,8 @@ function App(): React.JSX.Element {
     }
 
     if (!isNaN(min) && min > 0) {
-      // setTimeLeft(min * 60) // 本番用
-      setTimeLeft(3) // デバッグ用 (3秒)
+      setTimeLeft(min * 60) // 本番用
+      // setTimeLeft(3) // デバッグ用 (3秒)
       setMode('running')
     }
   }
