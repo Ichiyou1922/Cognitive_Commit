@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, TooltipProps } from 'recharts'
 
-// App.tsx の上部に追加
+// --- 型定義 ---
 interface LogData {
   date: string
   topic: string
@@ -11,119 +11,170 @@ interface LogData {
   nextAction: string
 }
 
+interface HistoryItem {
+  id: string
+  date: string
+  topic: string
+  duration: number
+  acquisition: string
+}
+
+interface GraphData {
+  name: string    // 日付 (MM/DD)
+  minutes: number // 合計時間
+  topics: string[] // その日のトピック一覧
+}
+
 declare global {
   interface Window {
     api: {
       saveLog: (data: LogData) => Promise<{ success: boolean; path?: string; error?: string }>
-      getLogs: () => Promise<Array<{ id: string; date: string; topic: string; duration: number; acquisition: string }>>
+      getLogs: () => Promise<Array<HistoryItem>>
     }
   }
 }
 
-// データを「日付: 合計時間」の形にまとめる関数
-const processDataForGraph = (logs: Array<{ date: string; duration: number }>) => {
-  // 1. 日付ごとの辞書を作る { "2024-05-20": 45, "2024-05-21": 30 }
-  const map = new Map<string, number>()
+type AppMode = 'idle' | 'running' | 'review'
+
+// --- グラフ用データ加工関数 ---
+const processDataForGraph = (logs: Array<HistoryItem>): GraphData[] => {
+  const map = new Map<string, { minutes: number; topics: Set<string> }>()
   
   logs.forEach(log => {
-    // 日付文字列 (YYYY-MM-DD) を取得
-    const dateKey = new Date(log.date).toLocaleDateString()
-    const current = map.get(dateKey) || 0
-    map.set(dateKey, current + log.duration)
+    const dateKey = new Date(log.date).toLocaleDateString() // ロケールに合わせて日付を文字列化
+    const current = map.get(dateKey) || { minutes: 0, topics: new Set() }
+    
+    current.minutes += log.duration
+    current.topics.add(log.topic) // Setを使うことで重複トピックを排除
+    map.set(dateKey, current)
   })
 
-  // 2. グラフ用の配列に変換 [ { name: "5/20", minutes: 45 }, ... ]
-  // 日付順にソートしておく
   return Array.from(map.entries())
-    .map(([date, total]) => ({ name: date, minutes: total }))
-    .reverse() // 元が新しい順なので，グラフ用に古い順(左→右)にするならreverseが必要かも
-    // (※お好みで調整．今回は直近7日分だけ出すなどの制限もアリだが一旦全量出す)
+    .map(([date, data]) => ({
+      name: date.slice(5), // "2024/05/20" -> "05/20" (月/日だけにする簡易処理)
+      minutes: data.minutes,
+      topics: Array.from(data.topics)
+    }))
+    .reverse() // 古い順に表示
 }
 
-// アプリの状態を定義（型定義）
-type AppMode = 'idle' | 'running' | 'review'
+// --- カスタムツールチップコンポーネント ---
+const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload as GraphData;
+    return (
+      <div style={{ backgroundColor: 'white', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+        <p style={{ fontWeight: 'bold', margin: '0 0 5px' }}>{label}</p>
+        <p style={{ color: '#8884d8', margin: 0 }}>Total: {data.minutes} min</p>
+        <div style={{ marginTop: '5px', fontSize: '12px', color: '#666' }}>
+          {data.topics.map((t, i) => (
+            <div key={i}>• {t}</div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 function App(): React.JSX.Element {
   // --- State ---
   const [mode, setMode] = useState<AppMode>('idle')
+  
+  // 入力データ
+  const [topic, setTopic] = useState<string>('') // <--- 追加: トピック入力用
   const [inputMinutes, setInputMinutes] = useState<string>('25')
+  
+  // タイマー・振り返り用
   const [timeLeft, setTimeLeft] = useState<number>(0)
+  const [acquisition, setAcquisition] = useState('')
+  const [debt, setDebt] = useState('')
+  const [nextAction, setNextAction] = useState('')
 
-  // 振り返り入力用のState
-  const [acquisition, setAcquisition] = useState('') // 理解したこと
-  const [debt, setDebt] = useState('') // 理解できなかったこと
-  const [nextAction, setNextAction] = useState('') // 次のアクション
+  // 履歴データ
+  const [history, setHistory] = useState<Array<HistoryItem>>([])
 
-  // 追加: 過去のログデータを持つState
-  const [history, setHistory] = useState<Array<{ id: string; date: string; topic: string; duration: number }>>([])
+  // --- Helper: 日付を "YYYY-MM-DD HH:mm:ss" 形式にする ---
+  const getFormattedDate = () => {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const d = String(now.getDate()).padStart(2, '0')
+    const h = String(now.getHours()).padStart(2, '0')
+    const min = String(now.getMinutes()).padStart(2, '0')
+    const s = String(now.getSeconds()).padStart(2, '0')
+    return `${y}-${m}-${d} ${h}:${min}:${s}`
+  }
+  // -----------------------------------------------------
 
-  // --- Effect (Timer Logic) ---
+  // --- Effect: 履歴読み込み ---
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const logs = await window.api.getLogs()
+        setHistory(logs)
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    fetchLogs()
+  }, [mode]) // モードが変わるたび（保存完了時など）に再読み込み
+
+  // --- Effect: タイマーロジック ---
   useEffect(() => {
     if (mode === 'running') {
       if (timeLeft > 0) {
-        const timer = setTimeout(() => {
-          setTimeLeft((prev) => prev - 1)
-        }, 1000)
-        return (): void => clearTimeout(timer)
+        const timer = setTimeout(() => setTimeLeft((p) => p - 1), 1000)
+        return () => clearTimeout(timer)
       } else {
-        // Time is 0, switch to review mode
-        // eslint-disable-next-line
         setMode('review')
+        // ここで通知音を鳴らす等の処理を入れる
       }
     }
     return undefined
   }, [mode, timeLeft])
 
-  useEffect(() => {
-    const fetchLogs = async () => {
-      const logs = await window.api.getLogs()
-      console.log('Loaded Logs:', logs) // console
-      setHistory(logs)
+  // --- Actions ---
+  const handleStart = () => {
+    const min = parseInt(inputMinutes, 10)
+    // トピックが空なら警告してもいいが，今回は必須にはせずデフォルト値を入れるかそのままにする
+    if (!topic.trim()) {
+      alert('Please enter a topic!')
+      return
     }
 
-    fetchLogs()
-  }, [mode])
-
-  // --- Actions ---
-  const handleStart = (): void => {
-    const min = parseInt(inputMinutes, 10)
     if (!isNaN(min) && min > 0) {
-      // setTimeLeft(min * 60)
-      setTimeLeft(5) // デバッグ用: 5秒ですぐ終わらせたい時はこっちを使う
+      // setTimeLeft(min * 60) // 本番用
+      setTimeLeft(3) // デバッグ用 (3秒)
       setMode('running')
     }
   }
 
-  const handleSave = async (): Promise<void> => {
-    // async をつけるのを忘れるな
-    const logData = {
-      date: new Date().toISOString(),
-      topic: 'React_Study', // ファイル名用に英語にしておく
+  const handleSave = async () => {
+    const logData: LogData = {
+      date: getFormattedDate(),
+      topic: topic, // <--- 修正: 入力されたトピックを使用
       duration: inputMinutes,
       acquisition,
       debt,
       nextAction
     }
 
-    console.log('Sending to Main Process...', logData)
-
-    // --- 変更点: window.api.saveLog を呼ぶ ---
     const result = await window.api.saveLog(logData)
 
     if (result.success) {
-      alert(`保存成功！\n場所: ${result.path}`)
-      // 成功したらフォームをクリア
+      alert(`Saved!\nPath: ${result.path}`)
       setAcquisition('')
       setDebt('')
       setNextAction('')
+      // topicとinputMinutesは次回のために残すか，クリアするか選べる（今回は残す）
       setMode('idle')
     } else {
-      alert(`保存失敗...\n${result.error}`)
+      alert(`Error: ${result.error}`)
     }
-    // ----------------------------------------
   }
 
-  const formatTime = (seconds: number): string => {
+  const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60)
     const s = seconds % 60
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
@@ -131,179 +182,125 @@ function App(): React.JSX.Element {
 
   // --- View ---
   return (
-    <div
-      style={{
-        padding: '20px',
-        maxWidth: '600px',
-        margin: '0 auto',
-        fontFamily: 'sans-serif',
-        color: '#333'
-      }}
-    >
+    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif', color: '#333' }}>
       <h1 style={{ textAlign: 'center', borderBottom: '2px solid #333', paddingBottom: '10px' }}>
         Cognitive Commit
       </h1>
 
       {/* 1. 設定画面 */}
       {mode === 'idle' && (
-        <div style={{ textAlign: 'center', marginTop: '50px' }}>
-          <h2>何を学びますか？</h2>
-          <div style={{ fontSize: '24px', marginBottom: '20px' }}>
+        <div style={{ textAlign: 'center', marginTop: '30px' }}>
+          
+          {/* Topic Input */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', fontSize: '18px', fontWeight: 'bold', marginBottom: '10px' }}>
+              What will you learn?
+            </label>
+            <input
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. React Hooks, Linear Algebra..."
+              style={{ padding: '10px', fontSize: '18px', width: '300px', textAlign: 'center' }}
+            />
+          </div>
+
+          {/* Time Input */}
+          <div style={{ marginBottom: '30px' }}>
+            <label style={{ display: 'block', fontSize: '18px', fontWeight: 'bold', marginBottom: '10px' }}>
+              Time (min)
+            </label>
             <input
               type="number"
               value={inputMinutes}
               onChange={(e) => setInputMinutes(e.target.value)}
-              style={{ padding: '10px', width: '80px', fontSize: '24px', textAlign: 'center' }}
+              style={{ padding: '10px', width: '100px', fontSize: '24px', textAlign: 'center' }}
             />
-            <span style={{ marginLeft: '10px' }}>min</span>
           </div>
+
           <button
             onClick={handleStart}
-            style={{
-              padding: '15px 40px',
-              fontSize: '20px',
-              backgroundColor: '#28a745',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer'
-            }}
+            style={{ padding: '15px 50px', fontSize: '20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
           >
-            COMMIT & START
+            COMMIT
           </button>
-          {/* ↓↓↓ 追加: グラフ表示エリア ↓↓↓ */}
+
+          {/* グラフ表示エリア */}
           {history.length > 0 && (
-            <div style={{ marginTop: '40px', height: '300px', width: '100%' }}>
+            <div style={{ marginTop: '50px', height: '300px', width: '100%' }}>
               <h3 style={{ textAlign: 'left', marginLeft: '20px' }}>Study Trends</h3>
-              
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={processDataForGraph(history)} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="minutes" fill="#8884d8" name="Study Time (min)" />
+                  {/* カスタムツールチップを適用 */}
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="minutes" fill="#8884d8" name="Study Time" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
-          {/* ↑↑↑ 追加ここまで ↑↑↑ */}
         </div>
       )}
 
       {/* 2. 計測中画面 */}
       {mode === 'running' && (
         <div style={{ textAlign: 'center', marginTop: '50px' }}>
-          <h2>Focusing...</h2>
-          <div
-            style={{
-              fontSize: '100px',
-              fontWeight: 'bold',
-              fontFamily: 'monospace',
-              margin: '20px 0'
-            }}
-          >
+          <h2 style={{ fontSize: '24px' }}>Focusing on: <span style={{ color: '#007bff' }}>{topic}</span></h2>
+          <div style={{ fontSize: '120px', fontWeight: 'bold', fontFamily: 'monospace', margin: '30px 0' }}>
             {formatTime(timeLeft)}
           </div>
           <button
-            onClick={() => setMode('idle')} // 本当は理由を聞くべきだが今は省略
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#dc3545',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer'
-            }}
+            onClick={() => setMode('idle')}
+            style={{ padding: '10px 30px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
           >
-            GIVE UP
+            ABORT
           </button>
         </div>
       )}
 
-      {/* 3. 振り返り画面 (今回の核心) */}
+      {/* 3. 振り返り画面 */}
       {mode === 'review' && (
-        <div
-          style={{
-            backgroundColor: '#f8f9fa',
-            padding: '20px',
-            borderRadius: '10px',
-            border: '1px solid #ddd'
-          }}
-        >
-          <h2 style={{ color: '#0056b3' }}>Session Complete.</h2>
-          <p>お疲れ様でした．脳内のキャッシュを書き出してください．</p>
-
+        <div style={{ backgroundColor: '#f8f9fa', padding: '30px', borderRadius: '10px', border: '1px solid #ddd' }}>
+          <h2 style={{ color: '#0056b3', marginTop: 0 }}>Session Complete!</h2>
+          <p style={{ fontSize: '18px' }}>Topic: <strong>{topic}</strong> ({inputMinutes} min)</p>
+          
           <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
-              Acquisition (理解したこと・成果)
-            </label>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Acquisition (What did you learn?)</label>
             <textarea
               value={acquisition}
               onChange={(e) => setAcquisition(e.target.value)}
-              rows={3}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '5px',
-                border: '1px solid #ccc'
-              }}
-              placeholder="例: useStateは状態を保持するフックであると理解した"
+              rows={4}
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
             />
           </div>
 
           <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
-              Debt (理解できなかったこと・負債)
-            </label>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Debt (What is unclear?)</label>
             <textarea
               value={debt}
               onChange={(e) => setDebt(e.target.value)}
               rows={3}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '5px',
-                border: '1px solid #ccc',
-                backgroundColor: '#fff0f0'
-              }}
-              placeholder="例: useEffectの依存配列の挙動がまだ怪しい"
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', backgroundColor: '#fff0f0' }}
             />
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
-              Next Action (次の一手)
-            </label>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Next Action</label>
             <input
               type="text"
               value={nextAction}
               onChange={(e) => setNextAction(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '5px',
-                border: '1px solid #ccc'
-              }}
-              placeholder="例: 公式ドキュメントのEffectの章を読む"
+              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
             />
           </div>
 
           <button
             onClick={handleSave}
-            style={{
-              width: '100%',
-              padding: '15px',
-              fontSize: '18px',
-              backgroundColor: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
+            style={{ width: '100%', padding: '15px', fontSize: '18px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
           >
-            SAVE LOG to CONSOLE
+            SAVE LOG
           </button>
         </div>
       )}
