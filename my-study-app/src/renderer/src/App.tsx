@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
 
 // App.tsx の上部に追加
 interface LogData {
@@ -14,8 +15,29 @@ declare global {
   interface Window {
     api: {
       saveLog: (data: LogData) => Promise<{ success: boolean; path?: string; error?: string }>
+      getLogs: () => Promise<Array<{ id: string; date: string; topic: string; duration: number; acquisition: string }>>
     }
   }
+}
+
+// データを「日付: 合計時間」の形にまとめる関数
+const processDataForGraph = (logs: Array<{ date: string; duration: number }>) => {
+  // 1. 日付ごとの辞書を作る { "2024-05-20": 45, "2024-05-21": 30 }
+  const map = new Map<string, number>()
+  
+  logs.forEach(log => {
+    // 日付文字列 (YYYY-MM-DD) を取得
+    const dateKey = new Date(log.date).toLocaleDateString()
+    const current = map.get(dateKey) || 0
+    map.set(dateKey, current + log.duration)
+  })
+
+  // 2. グラフ用の配列に変換 [ { name: "5/20", minutes: 45 }, ... ]
+  // 日付順にソートしておく
+  return Array.from(map.entries())
+    .map(([date, total]) => ({ name: date, minutes: total }))
+    .reverse() // 元が新しい順なので，グラフ用に古い順(左→右)にするならreverseが必要かも
+    // (※お好みで調整．今回は直近7日分だけ出すなどの制限もアリだが一旦全量出す)
 }
 
 // アプリの状態を定義（型定義）
@@ -31,6 +53,9 @@ function App(): React.JSX.Element {
   const [acquisition, setAcquisition] = useState('') // 理解したこと
   const [debt, setDebt] = useState('') // 理解できなかったこと
   const [nextAction, setNextAction] = useState('') // 次のアクション
+
+  // 追加: 過去のログデータを持つState
+  const [history, setHistory] = useState<Array<{ id: string; date: string; topic: string; duration: number }>>([])
 
   // --- Effect (Timer Logic) ---
   useEffect(() => {
@@ -48,6 +73,16 @@ function App(): React.JSX.Element {
     }
     return undefined
   }, [mode, timeLeft])
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      const logs = await window.api.getLogs()
+      console.log('Loaded Logs:', logs) // console
+      setHistory(logs)
+    }
+
+    fetchLogs()
+  }, [mode])
 
   // --- Actions ---
   const handleStart = (): void => {
@@ -136,6 +171,23 @@ function App(): React.JSX.Element {
           >
             COMMIT & START
           </button>
+          {/* ↓↓↓ 追加: グラフ表示エリア ↓↓↓ */}
+          {history.length > 0 && (
+            <div style={{ marginTop: '40px', height: '300px', width: '100%' }}>
+              <h3 style={{ textAlign: 'left', marginLeft: '20px' }}>Study Trends</h3>
+              
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={processDataForGraph(history)} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="minutes" fill="#8884d8" name="Study Time (min)" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {/* ↑↑↑ 追加ここまで ↑↑↑ */}
         </div>
       )}
 

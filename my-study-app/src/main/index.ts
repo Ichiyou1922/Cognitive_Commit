@@ -103,7 +103,13 @@ ipcMain.handle('save-log', async (_event, data) => {
 
     // ファイル書き込み
     const safeTopic = data.topic.replace(/[^a-zA-Z0-9]/g, '_')
-    const fileName = `${new Date().toISOString().split('T')[0]}_${safeTopic}.md`
+    // const fileName = `${new Date().toISOString().split('T')[0]}_${safeTopic}.md`
+    const now = new Date()
+    const datePart = now.toISOString().split('T')[0]
+    // 時間の取得 + コロン to ハイフン
+    const timePart = now.toTimeString().split(' ')[0].replace(/:/g, '-')
+    const fileName = `${datePart}_${timePart}_${safeTopic}.md`
+
     const filePath = path.join(dirPath, fileName)
 
     const content = `---
@@ -142,3 +148,47 @@ ${data.nextAction}
     return { success: false, error: String(error) }
   }
 })
+
+// --- 追加: ログ読み込みAPI ---
+ipcMain.handle('get-logs', async () => {
+  try {
+    const dirPath = path.join(app.getPath('documents'), 'study-logs')
+    
+    // フォルダがなければ空のリストを返す
+    if (!fs.existsSync(dirPath)) {
+      return []
+    }
+
+    // フォルダ内のファイル一覧を取得
+    const files = fs.readdirSync(dirPath).filter(file => file.endsWith('.md'))
+    
+    // 各ファイルを読み込んでデータ化
+    const logs = files.map(file => {
+      const content = fs.readFileSync(path.join(dirPath, file), 'utf-8')
+      
+      // 正規表現でFrontmatter (---で囲まれた部分) から情報を抜く
+      // ※簡易実装なのでフォーマットが崩れると取れない可能性があるが今回は許容
+      const dateMatch = content.match(/date: "(.*?)"/)
+      const topicMatch = content.match(/topic: "(.*?)"/)
+      const durationMatch = content.match(/duration: "(.*?)"/)
+      
+      // 本文からAcquisitionなどを抜くのは少し複雑なので，今回はメタデータだけ返す
+      // 必要ならここを拡張して本文も取得できるようにする
+      
+      return {
+        id: file, // ファイル名をID代わりにする
+        date: dateMatch ? dateMatch[1] : '',
+        topic: topicMatch ? topicMatch[1] : 'Unknown',
+        duration: durationMatch ? parseInt(durationMatch[1], 10) : 0
+      }
+    })
+
+    // 日付の新しい順にソート
+    return logs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  } catch (error) {
+    console.error('Failed to get logs:', error)
+    return []
+  }
+})
+// ---------------------------

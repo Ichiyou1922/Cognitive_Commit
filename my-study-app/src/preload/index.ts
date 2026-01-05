@@ -3,7 +3,8 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
 const api = {
-  saveLog: (data: unknown) => ipcRenderer.invoke('save-log', data)
+  saveLog: (data: unknown) => ipcRenderer.invoke('save-log', data),
+  getLogs: () => ipcRenderer.invoke('get-logs')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
