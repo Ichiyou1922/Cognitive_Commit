@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: my-study-app
+appId: com.Ichiyou1922.cognitivecommit
+productName: CognitiveCommit
 directories:
   buildResources: build
 files:
@@ -12,7 +12,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: my-study-app
+  executableName: CognitiveCommit
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}

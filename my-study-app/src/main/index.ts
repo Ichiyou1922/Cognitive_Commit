@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -85,31 +85,107 @@ app.on('window-all-closed', () => {
 // code. You can also put them in separate files and require them here.
 
 // --- ここから追記 ---
+const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json')
+
+const loadConfig = () => {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'))
+    }
+  } catch (e) {
+    console.error('Failed to load config:', e)
+  }
+  return { savePath: '', gitRepoUrl: '' }
+}
+
+const saveConfigToFile = (config: { savePath: string; gitRepoUrl: string }) => {
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8')
+    return true
+  } catch (e) {
+    console.error('Failed to save config:', e)
+    return false
+  }
+}
+
+// --- IPC Implementations ---
+
+ipcMain.handle('select-directory', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory']
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    return null
+  }
+  return result.filePaths[0]
+})
+
+ipcMain.handle('get-config', async () => {
+  return loadConfig()
+})
+
+ipcMain.handle('save-config', async (_event, config) => {
+  const success = saveConfigToFile(config)
+  if (success && config.savePath && config.gitRepoUrl) {
+    // Git連携のセットアップ
+    try {
+      if (!fs.existsSync(config.savePath)) {
+        fs.mkdirSync(config.savePath, { recursive: true })
+      }
+      
+      const git = simpleGit(config.savePath)
+      
+      // init if needed
+      if (!fs.existsSync(path.join(config.savePath, '.git'))) {
+        await git.init()
+      }
+
+      // remote add or set-url
+      const remotes = await git.getRemotes(true)
+      const origin = remotes.find(r => r.name === 'origin')
+      
+      if (origin) {
+        if (origin.refs.push !== config.gitRepoUrl) {
+          await git.remote(['set-url', 'origin', config.gitRepoUrl])
+        }
+      } else {
+        await git.addRemote('origin', config.gitRepoUrl)
+      }
+      
+      // 初回連携時にfetchしてみる (オプション)
+      // await git.fetch() 
+      
+    } catch (e) {
+      console.error('Git setup failed:', e)
+      // Config保存は成功したことにすうるが、エラーログは残す
+    }
+  }
+  return success
+})
+
 ipcMain.handle('save-log', async (_event, data) => {
   try {
-    const dirPath = path.join(app.getPath('documents'), 'study-logs')
+    const config = loadConfig()
+    if (!config.savePath) {
+        throw new Error('Save path is not configured.')
+    }
+    const dirPath = config.savePath // ユーザー設定のパスを直接使う
     
-    // フォルダ作成 (Fix: Create dir BEFORE initializing simpleGit)
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true })
     }
 
     const git = simpleGit(dirPath)
 
-    // git init
     if (!fs.existsSync(path.join(dirPath, '.git'))) {
       await git.init()
     }
 
-    // ファイル書き込み
     const safeTopic = data.topic.replace(/[^a-zA-Z0-9]/g, '_')
-    // const fileName = `${new Date().toISOString().split('T')[0]}_${safeTopic}.md`
     const now = new Date()
     const datePart = now.toISOString().split('T')[0]
-    // 時間の取得 + コロン to ハイフン
     const timePart = now.toTimeString().split(' ')[0].replace(/:/g, '-')
     const fileName = `${datePart}_${timePart}_${safeTopic}.md`
-
     const filePath = path.join(dirPath, fileName)
 
     const content = `---
@@ -129,16 +205,17 @@ ${data.nextAction}
 `
     fs.writeFileSync(filePath, content, 'utf-8')
 
-    // Gitコミット
     console.log('Starting Git operations...')
     await git.add('.')
     await git.commit(`[Study] ${data.topic} (${data.duration}min)`)
 
-    // Push (エラーが出ても無視して進む)
-    try {
-        await git.push('origin', 'main')
-    } catch (e) {
-        console.warn('Git push skipped:', e)
+    // ConfigにURLがあればPushを試みる
+    if (config.gitRepoUrl) {
+        try {
+            await git.push('origin', 'main')
+        } catch (e) {
+            console.warn('Git push failed (possibly due to auth or non-main branch):', e)
+        }
     }
 
     return { success: true, path: filePath }
@@ -149,41 +226,32 @@ ${data.nextAction}
   }
 })
 
-// --- 追加: ログ読み込みAPI ---
 ipcMain.handle('get-logs', async () => {
   try {
-    const dirPath = path.join(app.getPath('documents'), 'study-logs')
+    const config = loadConfig()
+    if (!config.savePath) return []
+    const dirPath = config.savePath
     
-    // フォルダがなければ空のリストを返す
     if (!fs.existsSync(dirPath)) {
       return []
     }
 
-    // フォルダ内のファイル一覧を取得
     const files = fs.readdirSync(dirPath).filter(file => file.endsWith('.md'))
     
-    // 各ファイルを読み込んでデータ化
     const logs = files.map(file => {
       const content = fs.readFileSync(path.join(dirPath, file), 'utf-8')
-      
-      // 正規表現でFrontmatter (---で囲まれた部分) から情報を抜く
-      // ※簡易実装なのでフォーマットが崩れると取れない可能性があるが今回は許容
       const dateMatch = content.match(/date: "(.*?)"/)
       const topicMatch = content.match(/topic: "(.*?)"/)
       const durationMatch = content.match(/duration: "(.*?)"/)
       
-      // 本文からAcquisitionなどを抜くのは少し複雑なので，今回はメタデータだけ返す
-      // 必要ならここを拡張して本文も取得できるようにする
-      
       return {
-        id: file, // ファイル名をID代わりにする
+        id: file,
         date: dateMatch ? dateMatch[1] : '',
         topic: topicMatch ? topicMatch[1] : 'Unknown',
         duration: durationMatch ? parseInt(durationMatch[1], 10) : 0
       }
     })
 
-    // 日付の新しい順にソート
     return logs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   } catch (error) {
