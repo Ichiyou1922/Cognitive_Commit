@@ -3,6 +3,12 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
+// --- 追加部分 1: Node.jsのモジュールを読み込む ---
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
+// ---------------------------------------------
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -72,3 +78,51 @@ app.on('window-all-closed', () => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
+
+// --- 追加部分 2: IPC通信のリスナー (命令待ち受け) ---
+// 画面から 'save-log' というチャンネルでデータが飛んできたら実行する
+ipcMain.handle('save-log', async (_event, data) => {
+  try {
+    // 1. 保存場所を決める (今回はドキュメントフォルダ直下の 'study-logs' フォルダ)
+    const dirPath = path.join(app.getPath('documents'), 'study-logs')
+    
+    // 2. フォルダがなければ作る
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true })
+    }
+
+    // 3. ファイル名を作る (YYYY-MM-DD_Topic.md)
+    // ファイル名に使えない文字を置換する処理も入れるべきだが，今は簡易版
+    const safeTopic = data.topic.replace(/[^a-zA-Z0-9]/g, '_')
+    const fileName = `${new Date().toISOString().split('T')[0]}_${safeTopic}.md`
+    const filePath = path.join(dirPath, fileName)
+
+    // 4. ファイルの中身 (Markdown) を作る
+    const content = `---
+date: "${data.date}"
+topic: "${data.topic}"
+duration: "${data.duration}"
+---
+
+## Acquisition
+${data.acquisition}
+
+## Debt
+${data.debt}
+
+## Next Action
+${data.nextAction}
+`
+
+    // 5. 書き込む
+    fs.writeFileSync(filePath, content, 'utf-8')
+    
+    console.log('File saved to:', filePath) // ターミナルにログが出る
+    return { success: true, path: filePath }
+
+  } catch (error) {
+    console.error('Failed to save:', error)
+    return { success: false, error: String(error) }
+  }
+})
+// ---------------------------------------------
