@@ -87,7 +87,7 @@ app.on('window-all-closed', () => {
 // --- ここから追記 ---
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json')
 
-const loadConfig = () => {
+const loadConfig = (): { savePath: string; gitRepoUrl: string } => {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'))
@@ -98,7 +98,7 @@ const loadConfig = () => {
   return { savePath: '', gitRepoUrl: '' }
 }
 
-const saveConfigToFile = (config: { savePath: string; gitRepoUrl: string }) => {
+const saveConfigToFile = (config: { savePath: string; gitRepoUrl: string }): boolean => {
   try {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8')
     return true
@@ -136,9 +136,9 @@ ipcMain.handle('save-config', async (_event, config) => {
       if (!fs.existsSync(config.savePath)) {
         fs.mkdirSync(config.savePath, { recursive: true })
       }
-      
+
       const git = simpleGit(config.savePath)
-      
+
       // init if needed
       const isRepo = await git.checkIsRepo()
       if (!isRepo) {
@@ -160,8 +160,8 @@ ipcMain.handle('save-config', async (_event, config) => {
       if (config.gitRepoUrl) {
         // remote add or set-url
         const remotes = await git.getRemotes(true)
-        const origin = remotes.find(r => r.name === 'origin')
-        
+        const origin = remotes.find((r) => r.name === 'origin')
+
         if (origin) {
           if (origin.refs.push !== config.gitRepoUrl) {
             await git.remote(['set-url', 'origin', config.gitRepoUrl])
@@ -169,26 +169,35 @@ ipcMain.handle('save-config', async (_event, config) => {
         } else {
           await git.addRemote('origin', config.gitRepoUrl)
         }
-        
+
         // 接続テスト (fetch)
         try {
           // リモートが空の場合はこれで失敗するが、それは正常な場合もある
-          await git.fetch('origin', 'main', { '--depth': '1' }) 
+          await git.fetch('origin', 'main', { '--depth': '1' })
         } catch (e) {
           console.warn('Git fetch failed (likely empty repo or auth error):', e)
           const errorMsg = e instanceof Error ? e.message : String(e)
           // "couldn't find remote ref main" は空リポジトリの典型的なエラーなので許容する
-          if (errorMsg.includes("couldn't find remote ref") || errorMsg.includes("fatal: couldn't find remote ref")) {
-             return { success: true } // 空リポジトリとみなして成功を返す
+          if (
+            errorMsg.includes("couldn't find remote ref") ||
+            errorMsg.includes("fatal: couldn't find remote ref")
+          ) {
+            // 空リポジトリとみなして成功を返す
+            return { success: true }
           }
           // その他のエラー (認証失敗など) は警告として返す
-          return { success: true, error: `Config saved, but connection check failed (Repo might be empty or Auth failed): ${errorMsg}` }
+          return {
+            success: true,
+            error: `Config saved, but connection check failed (Repo might be empty or Auth failed): ${errorMsg}`
+          }
         }
       }
-      
     } catch (e) {
       console.error('Git setup failed:', e)
-      return { success: false, error: `Git setup failed: ${e instanceof Error ? e.message : String(e)}` }
+      return {
+        success: false,
+        error: `Git setup failed: ${e instanceof Error ? e.message : String(e)}`
+      }
     }
   }
   return { success: true }
@@ -202,11 +211,11 @@ ipcMain.handle('save-log', async (_event, data) => {
     console.log('Loaded Config:', JSON.stringify(config, null, 2))
 
     if (!config.savePath) {
-        throw new Error('Save path is not configured.')
+      throw new Error('Save path is not configured.')
     }
     const dirPath = config.savePath // ユーザー設定のパスを直接使う
     console.log('Target directory:', dirPath)
-    
+
     if (!fs.existsSync(dirPath)) {
       console.log('Directory does not exist, creating...')
       fs.mkdirSync(dirPath, { recursive: true })
@@ -217,7 +226,7 @@ ipcMain.handle('save-log', async (_event, data) => {
     if (!fs.existsSync(path.join(dirPath, '.git'))) {
       await git.init()
     }
-    
+
     // Config設定 (念のため毎回確認)
     await git.addConfig('user.name', 'Cognitive Commit App')
     await git.addConfig('user.email', 'app@cognitive-commit.local')
@@ -253,25 +262,28 @@ ${data.nextAction}
 
     // Commit後にブランチ名を強制変更 (Commitがないと branch -M が失敗する環境があるため)
     try {
-        await git.raw(['branch', '-M', 'main'])
+      await git.raw(['branch', '-M', 'main'])
     } catch (e) {
-        console.warn('Failed to rename branch to main:', e)
+      console.warn('Failed to rename branch to main:', e)
     }
 
     // ConfigにURLがあればPushを試みる
     if (config.gitRepoUrl) {
-        try {
-            // -u オプションをつけて push
-            console.log('Pushing to remote...')
-            await git.push(['-u', 'origin', 'main'])
-        } catch (e) {
-            console.warn('Git push failed:', e)
-            return { success: true, path: filePath, error: `Saved locally, but Git Push failed: ${e instanceof Error ? e.message : String(e)}` }
+      try {
+        // -u オプションをつけて push
+        console.log('Pushing to remote...')
+        await git.push(['-u', 'origin', 'main'])
+      } catch (e) {
+        console.warn('Git push failed:', e)
+        return {
+          success: true,
+          path: filePath,
+          error: `Saved locally, but Git Push failed: ${e instanceof Error ? e.message : String(e)}`
         }
+      }
     }
 
     return { success: true, path: filePath }
-
   } catch (error) {
     console.error('Failed to save:', error)
     return { success: false, error: String(error) }
@@ -283,19 +295,19 @@ ipcMain.handle('get-logs', async () => {
     const config = loadConfig()
     if (!config.savePath) return []
     const dirPath = config.savePath
-    
+
     if (!fs.existsSync(dirPath)) {
       return []
     }
 
-    const files = fs.readdirSync(dirPath).filter(file => file.endsWith('.md'))
-    
-    const logs = files.map(file => {
+    const files = fs.readdirSync(dirPath).filter((file) => file.endsWith('.md'))
+
+    const logs = files.map((file) => {
       const content = fs.readFileSync(path.join(dirPath, file), 'utf-8')
       const dateMatch = content.match(/date: "(.*?)"/)
       const topicMatch = content.match(/topic: "(.*?)"/)
       const durationMatch = content.match(/duration: "(.*?)"/)
-      
+
       return {
         id: file,
         date: dateMatch ? dateMatch[1] : '',
@@ -305,7 +317,6 @@ ipcMain.handle('get-logs', async () => {
     })
 
     return logs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
   } catch (error) {
     console.error('Failed to get logs:', error)
     return []

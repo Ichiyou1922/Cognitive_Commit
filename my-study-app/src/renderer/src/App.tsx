@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, TooltipProps } from 'recharts'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
+  TooltipProps
+} from 'recharts'
 import bellSoundUrl from './assets/bell.ogg'
 
 // --- Types ---
@@ -49,7 +58,7 @@ type AppMode = 'idle' | 'running' | 'review'
 const processDataForGraph = (logs: Array<HistoryItem>): GraphData[] => {
   const map = new Map<string, { minutes: number; topics: Set<string> }>()
 
-  logs.forEach(log => {
+  logs.forEach((log) => {
     const dateKey = new Date(log.date).toLocaleDateString()
     const current = map.get(dateKey) || { minutes: 0, topics: new Set() }
 
@@ -71,9 +80,17 @@ const processDataForGraph = (logs: Array<HistoryItem>): GraphData[] => {
 
 const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
   if (active && payload && payload.length) {
-    const data = payload[0].payload as GraphData;
+    const data = payload[0].payload as GraphData
     return (
-      <div style={{ backgroundColor: 'white', padding: '10px', border: '1px solid #ccc', borderRadius: '5px', color: '#333' }}>
+      <div
+        style={{
+          backgroundColor: 'white',
+          padding: '10px',
+          border: '1px solid #ccc',
+          borderRadius: '5px',
+          color: '#333'
+        }}
+      >
         <p style={{ fontWeight: 'bold', margin: '0 0 5px' }}>{label}</p>
         <p style={{ color: '#8884d8', margin: 0 }}>Total: {data.minutes} min</p>
         <div style={{ marginTop: '5px', fontSize: '12px', color: '#666' }}>
@@ -82,10 +99,10 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
           ))}
         </div>
       </div>
-    );
+    )
   }
-  return null;
-};
+  return null
+}
 
 const WelcomeScreen = ({ onComplete }: { onComplete: () => void }) => {
   const [savePath, setSavePath] = useState('')
@@ -110,12 +127,24 @@ const WelcomeScreen = ({ onComplete }: { onComplete: () => void }) => {
   }
 
   return (
-    <div style={{ padding: '40px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif', textAlign: 'center' }}>
+    <div
+      style={{
+        padding: '40px',
+        maxWidth: '600px',
+        margin: '0 auto',
+        fontFamily: 'sans-serif',
+        textAlign: 'center'
+      }}
+    >
       <h1>Welcome to Cognitive Commit</h1>
-      <p style={{ marginBottom: '30px' }}>To get started, please configure your study environment.</p>
+      <p style={{ marginBottom: '30px' }}>
+        To get started, please configure your study environment.
+      </p>
 
       <div style={{ marginBottom: '20px', textAlign: 'left' }}>
-        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>1. Where to save logs?</label>
+        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
+          1. Where to save logs?
+        </label>
         <div style={{ display: 'flex', gap: '10px' }}>
           <input
             type="text"
@@ -124,14 +153,19 @@ const WelcomeScreen = ({ onComplete }: { onComplete: () => void }) => {
             placeholder="No directory selected"
             style={{ flex: 1, padding: '8px', color: '#333' }}
           />
-          <button onClick={handleSelectDir} style={{ padding: '8px 15px', cursor: 'pointer' }}>Select</button>
+          <button onClick={handleSelectDir} style={{ padding: '8px 15px', cursor: 'pointer' }}>
+            Select
+          </button>
         </div>
       </div>
 
       <div style={{ marginBottom: '30px', textAlign: 'left' }}>
-        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>2. GitHub Repository URL (Optional)</label>
+        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
+          2. GitHub Repository URL (Optional)
+        </label>
         <p style={{ fontSize: '12px', color: '#666', margin: '0 0 5px 0' }}>
-          Supports SSH and HTTP.<br />
+          Supports SSH and HTTP.
+          <br />
           For password-less HTTP push, insert token: <code>https://TOKEN@github.com/...</code>
         </p>
         <input
@@ -145,7 +179,15 @@ const WelcomeScreen = ({ onComplete }: { onComplete: () => void }) => {
 
       <button
         onClick={handleConnect}
-        style={{ padding: '15px 40px', fontSize: '18px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+        style={{
+          padding: '15px 40px',
+          fontSize: '18px',
+          backgroundColor: '#007bff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer'
+        }}
       >
         Connect & Start
       </button>
@@ -158,7 +200,7 @@ const SettingsScreen = ({ onClose }: { onClose: () => void }) => {
   const [gitRepoUrl, setGitRepoUrl] = useState('')
 
   useEffect(() => {
-    window.api.getConfig().then(config => {
+    window.api.getConfig().then((config) => {
       setSavePath(config.savePath)
       setGitRepoUrl(config.gitRepoUrl)
     })
@@ -179,19 +221,33 @@ const SettingsScreen = ({ onClose }: { onClose: () => void }) => {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif', color: '#333' }}>
+    <div
+      style={{
+        padding: '20px',
+        maxWidth: '600px',
+        margin: '0 auto',
+        fontFamily: 'sans-serif',
+        color: '#333'
+      }}
+    >
       <h2>Settings</h2>
 
       <div style={{ marginBottom: '20px' }}>
-        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Save Location</label>
+        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
+          Save Location
+        </label>
         <div style={{ display: 'flex', gap: '10px' }}>
           <input type="text" value={savePath} readOnly style={{ flex: 1, padding: '8px' }} />
-          <button onClick={handleSelectDir} style={{ padding: '8px' }}>Change</button>
+          <button onClick={handleSelectDir} style={{ padding: '8px' }}>
+            Change
+          </button>
         </div>
       </div>
 
       <div style={{ marginBottom: '20px' }}>
-        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>GitHub URL</label>
+        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
+          GitHub URL
+        </label>
         <input
           type="text"
           value={gitRepoUrl}
@@ -201,8 +257,25 @@ const SettingsScreen = ({ onClose }: { onClose: () => void }) => {
       </div>
 
       <div style={{ textAlign: 'right' }}>
-        <button onClick={onClose} style={{ marginRight: '10px', padding: '10px 20px', cursor: 'pointer' }}>Cancel</button>
-        <button onClick={handleSave} style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Save</button>
+        <button
+          onClick={onClose}
+          style={{ marginRight: '10px', padding: '10px 20px', cursor: 'pointer' }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#28a745',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer'
+          }}
+        >
+          Save
+        </button>
       </div>
     </div>
   )
@@ -234,11 +307,12 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
       try {
         const logs = await window.api.getLogs()
         setHistory(logs)
-      } catch (e) { console.error(e) }
+      } catch (e) {
+        console.error(e)
+      }
     }
     fetchLogs()
   }, [mode])
-
 
   useEffect(() => {
     if (mode === 'running') {
@@ -253,7 +327,6 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
     }
     return undefined
   }, [mode, timeLeft])
-
 
   const handleStart = () => {
     const min = parseInt(inputMinutes, 10)
@@ -283,6 +356,8 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
         msg += `\n\n⚠️ Git Sync Warning:\n${result.error}`
       }
       alert(msg)
+      setTopic('')
+      setInputMinutes('25')
       setAcquisition('')
       setDebt('')
       setNextAction('')
@@ -299,15 +374,34 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif', color: '#333', position: 'relative', paddingBottom: '60px' }}>
-
+    <div
+      style={{
+        padding: '20px',
+        maxWidth: '800px',
+        margin: '0 auto',
+        fontFamily: 'sans-serif',
+        color: '#333',
+        position: 'relative',
+        paddingBottom: '60px'
+      }}
+    >
       <h1 style={{ textAlign: 'center', borderBottom: '2px solid #333', paddingBottom: '10px' }}>
         Cognitive Commit
       </h1>
 
       <button
         onClick={onOpenSettings}
-        style={{ position: 'fixed', bottom: '20px', left: '20px', padding: '10px 15px', cursor: 'pointer', zIndex: 100, backgroundColor: '#f8f9fa', border: '1px solid #ddd', borderRadius: '5px' }}
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          left: '20px',
+          padding: '10px 15px',
+          cursor: 'pointer',
+          zIndex: 100,
+          backgroundColor: '#f8f9fa',
+          border: '1px solid #ddd',
+          borderRadius: '5px'
+        }}
       >
         ⚙️ Settings
       </button>
@@ -315,7 +409,14 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
       {mode === 'idle' && (
         <div style={{ textAlign: 'center', marginTop: '30px' }}>
           <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontSize: '18px', fontWeight: 'bold', marginBottom: '10px' }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                marginBottom: '10px'
+              }}
+            >
               What will you learn?
             </label>
             <input
@@ -327,7 +428,14 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
             />
           </div>
           <div style={{ marginBottom: '30px' }}>
-            <label style={{ display: 'block', fontSize: '18px', fontWeight: 'bold', marginBottom: '10px' }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                marginBottom: '10px'
+              }}
+            >
               Time (min)
             </label>
             <input
@@ -339,7 +447,15 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
           </div>
           <button
             onClick={handleStart}
-            style={{ padding: '15px 50px', fontSize: '20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+            style={{
+              padding: '15px 50px',
+              fontSize: '20px',
+              backgroundColor: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer'
+            }}
           >
             COMMIT
           </button>
@@ -348,7 +464,10 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
             <div style={{ marginTop: '50px', height: '300px', width: '100%' }}>
               <h3 style={{ textAlign: 'left', marginLeft: '20px' }}>Study Trends</h3>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={processDataForGraph(history)} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <BarChart
+                  data={processDataForGraph(history)}
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis />
@@ -363,13 +482,29 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
 
       {mode === 'running' && (
         <div style={{ textAlign: 'center', marginTop: '50px' }}>
-          <h2 style={{ fontSize: '24px' }}>Focusing on: <span style={{ color: '#007bff' }}>{topic}</span></h2>
-          <div style={{ fontSize: '120px', fontWeight: 'bold', fontFamily: 'monospace', margin: '30px 0' }}>
+          <h2 style={{ fontSize: '24px' }}>
+            Focusing on: <span style={{ color: '#007bff' }}>{topic}</span>
+          </h2>
+          <div
+            style={{
+              fontSize: '120px',
+              fontWeight: 'bold',
+              fontFamily: 'monospace',
+              margin: '30px 0'
+            }}
+          >
             {formatTime(timeLeft)}
           </div>
           <button
             onClick={() => setMode('idle')}
-            style={{ padding: '10px 30px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+            style={{
+              padding: '10px 30px',
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer'
+            }}
           >
             ABORT
           </button>
@@ -377,43 +512,83 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
       )}
 
       {mode === 'review' && (
-        <div style={{ backgroundColor: '#f8f9fa', padding: '30px', borderRadius: '10px', border: '1px solid #ddd' }}>
+        <div
+          style={{
+            backgroundColor: '#f8f9fa',
+            padding: '30px',
+            borderRadius: '10px',
+            border: '1px solid #ddd'
+          }}
+        >
           <h2 style={{ color: '#0056b3', marginTop: 0 }}>Session Complete!</h2>
-          <p style={{ fontSize: '18px' }}>Topic: <strong>{topic}</strong> ({inputMinutes} min)</p>
+          <p style={{ fontSize: '18px' }}>
+            Topic: <strong>{topic}</strong> ({inputMinutes} min)
+          </p>
 
           <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Acquisition (What did you learn?)</label>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
+              Acquisition (What did you learn?)
+            </label>
             <textarea
               value={acquisition}
               onChange={(e) => setAcquisition(e.target.value)}
               rows={4}
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '5px',
+                border: '1px solid #ccc'
+              }}
             />
           </div>
 
           <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Debt (What is unclear?)</label>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
+              Debt (What is unclear?)
+            </label>
             <textarea
               value={debt}
               onChange={(e) => setDebt(e.target.value)}
               rows={3}
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', backgroundColor: '#fff0f0' }}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '5px',
+                border: '1px solid #ccc',
+                backgroundColor: '#fff0f0'
+              }}
             />
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Next Action</label>
+            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
+              Next Action
+            </label>
             <input
               type="text"
               value={nextAction}
               onChange={(e) => setNextAction(e.target.value)}
-              style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '5px',
+                border: '1px solid #ccc'
+              }}
             />
           </div>
 
           <button
             onClick={handleSave}
-            style={{ width: '100%', padding: '15px', fontSize: '18px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+            style={{
+              width: '100%',
+              padding: '15px',
+              fontSize: '18px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer'
+            }}
           >
             SAVE LOG
           </button>
