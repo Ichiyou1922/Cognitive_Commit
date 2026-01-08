@@ -10,6 +10,14 @@ body {
   user-select: none;
 }
 
+/* Allow text selection and caret in form controls */
+input,
+textarea,
+select {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 code {
   font-weight: 600;
   padding: 3px 5px;
