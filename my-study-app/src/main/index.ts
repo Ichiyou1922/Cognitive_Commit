@@ -87,7 +87,7 @@ app.on('window-all-closed', () => {
 // --- ここから追記 ---
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json')
 
-const loadConfig = (): { savePath: string; gitRepoUrl: string } => {
+const loadConfig = (): { savePath: string; gitRepoUrl: string; email: string } => {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'))
@@ -95,10 +95,10 @@ const loadConfig = (): { savePath: string; gitRepoUrl: string } => {
   } catch (e) {
     console.error('Failed to load config:', e)
   }
-  return { savePath: '', gitRepoUrl: '' }
+  return { savePath: '', gitRepoUrl: '', email: '' }
 }
 
-const saveConfigToFile = (config: { savePath: string; gitRepoUrl: string }): boolean => {
+const saveConfigToFile = (config: { savePath: string; gitRepoUrl: string; email?: string }): boolean => {
   try {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8')
     return true
@@ -151,7 +151,8 @@ ipcMain.handle('save-config', async (_event, config) => {
       // コミット用ユーザー設定 (未設定によるエラー回避)
       try {
         await git.addConfig('user.name', 'Cognitive Commit App')
-        await git.addConfig('user.email', 'app@cognitive-commit.local')
+        const emailToUse = config.email && config.email.length > 0 ? config.email : 'app@cognitive-commit.local'
+        await git.addConfig('user.email', emailToUse)
       } catch (e) {
         console.warn('Failed to set git config:', e)
       }
@@ -228,8 +229,14 @@ ipcMain.handle('save-log', async (_event, data) => {
     }
 
     // Config設定 (念のため毎回確認)
-    await git.addConfig('user.name', 'Cognitive Commit App')
-    await git.addConfig('user.email', 'app@cognitive-commit.local')
+    try {
+      await git.addConfig('user.name', 'Cognitive Commit App')
+      const cfg = loadConfig()
+      const emailToUse = cfg.email && cfg.email.length > 0 ? cfg.email : 'app@cognitive-commit.local'
+      await git.addConfig('user.email', emailToUse)
+    } catch (e) {
+      console.warn('Failed to set git config before commit:', e)
+    }
 
     // 年月日ディレクトリを作成
     const now = new Date()

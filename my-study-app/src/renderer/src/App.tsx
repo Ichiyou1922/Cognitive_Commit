@@ -38,6 +38,7 @@ interface GraphData {
 interface Config {
   savePath: string
   gitRepoUrl: string
+  email?: string
 }
 
 declare global {
@@ -107,6 +108,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 const WelcomeScreen = ({ onComplete }: { onComplete: () => void }) => {
   const [savePath, setSavePath] = useState('')
   const [gitRepoUrl, setGitRepoUrl] = useState('')
+  const [email, setEmail] = useState('')
 
   const handleSelectDir = async () => {
     const path = await window.api.selectDirectory()
@@ -118,7 +120,7 @@ const WelcomeScreen = ({ onComplete }: { onComplete: () => void }) => {
       alert('Please select a save location.')
       return
     }
-    const result = await window.api.saveConfig({ savePath, gitRepoUrl })
+    const result = await window.api.saveConfig({ savePath, gitRepoUrl, email })
     if (result.success) {
       onComplete()
     } else {
@@ -175,6 +177,18 @@ const WelcomeScreen = ({ onComplete }: { onComplete: () => void }) => {
           placeholder="https://github.com/username/repo.git"
           style={{ width: '100%', padding: '8px', color: '#333' }}
         />
+        <div style={{ marginTop: '12px' }}>
+          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
+            3. Your GitHub email (used for commits)
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="your@example.com"
+            style={{ width: '100%', padding: '8px', color: '#333' }}
+          />
+        </div>
       </div>
 
       <button
@@ -198,11 +212,13 @@ const WelcomeScreen = ({ onComplete }: { onComplete: () => void }) => {
 const SettingsScreen = ({ onClose }: { onClose: () => void }) => {
   const [savePath, setSavePath] = useState('')
   const [gitRepoUrl, setGitRepoUrl] = useState('')
+  const [email, setEmail] = useState('')
 
   useEffect(() => {
     window.api.getConfig().then((config) => {
       setSavePath(config.savePath)
       setGitRepoUrl(config.gitRepoUrl)
+      setEmail((config as any).email || '')
     })
   }, [])
 
@@ -212,7 +228,7 @@ const SettingsScreen = ({ onClose }: { onClose: () => void }) => {
   }
 
   const handleSave = async () => {
-    const result = await window.api.saveConfig({ savePath, gitRepoUrl })
+    const result = await window.api.saveConfig({ savePath, gitRepoUrl, email })
     if (result.success) {
       onClose()
     } else {
@@ -252,6 +268,18 @@ const SettingsScreen = ({ onClose }: { onClose: () => void }) => {
           type="text"
           value={gitRepoUrl}
           onChange={(e) => setGitRepoUrl(e.target.value)}
+          style={{ width: '100%', padding: '8px' }}
+        />
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
+          GitHub Email (used for commits)
+        </label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           style={{ width: '100%', padding: '8px' }}
         />
       </div>
