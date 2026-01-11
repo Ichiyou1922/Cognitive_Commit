@@ -213,17 +213,17 @@ ipcMain.handle('save-log', async (_event, data) => {
     if (!config.savePath) {
       throw new Error('Save path is not configured.')
     }
-    const dirPath = config.savePath // ユーザー設定のパスを直接使う
-    console.log('Target directory:', dirPath)
+    const basePath = config.savePath // ユーザー設定のパスを直接使う
+    console.log('Base directory:', basePath)
 
-    if (!fs.existsSync(dirPath)) {
-      console.log('Directory does not exist, creating...')
-      fs.mkdirSync(dirPath, { recursive: true })
+    if (!fs.existsSync(basePath)) {
+      console.log('Base directory does not exist, creating...')
+      fs.mkdirSync(basePath, { recursive: true })
     }
 
-    const git = simpleGit(dirPath)
+    const git = simpleGit(basePath)
 
-    if (!fs.existsSync(path.join(dirPath, '.git'))) {
+    if (!fs.existsSync(path.join(basePath, '.git'))) {
       await git.init()
     }
 
@@ -231,12 +231,20 @@ ipcMain.handle('save-log', async (_event, data) => {
     await git.addConfig('user.name', 'Cognitive Commit App')
     await git.addConfig('user.email', 'app@cognitive-commit.local')
 
-    const safeTopic = data.topic.replace(/[^a-zA-Z0-9]/g, '_')
+    // 年月日ディレクトリを作成
     const now = new Date()
-    const datePart = now.toISOString().split('T')[0]
+    const datePart = now.toISOString().split('T')[0] // YYYY-MM-DD
+    const dateDir = path.join(basePath, datePart)
+
+    if (!fs.existsSync(dateDir)) {
+      console.log(`Creating date directory: ${dateDir}`)
+      fs.mkdirSync(dateDir, { recursive: true })
+    }
+
+    const safeTopic = data.topic.replace(/[^a-zA-Z0-9]/g, '_')
     const timePart = now.toTimeString().split(' ')[0].replace(/:/g, '-')
-    const fileName = `${datePart}_${timePart}_${safeTopic}.md`
-    const filePath = path.join(dirPath, fileName)
+    const fileName = `${timePart}_${safeTopic}.md`
+    const filePath = path.join(dateDir, fileName)
 
     const content = `---
 date: "${data.date}"
@@ -294,25 +302,49 @@ ipcMain.handle('get-logs', async () => {
   try {
     const config = loadConfig()
     if (!config.savePath) return []
-    const dirPath = config.savePath
+    const basePath = config.savePath
 
-    if (!fs.existsSync(dirPath)) {
+    if (!fs.existsSync(basePath)) {
       return []
     }
 
-    const files = fs.readdirSync(dirPath).filter((file) => file.endsWith('.md'))
+    // ルートディレクトリ直下のmdファイルと、サブディレクトリ内のmdファイルを再帰的に取得
+    const getAllMdFiles = (dir: string): string[] => {
+      const results: string[] = []
+      const items = fs.readdirSync(dir)
 
-    const logs = files.map((file) => {
-      const content = fs.readFileSync(path.join(dirPath, file), 'utf-8')
+      for (const item of items) {
+        const fullPath = path.join(dir, item)
+        const stat = fs.statSync(fullPath)
+
+        if (stat.isDirectory()) {
+          // .gitディレクトリは除外
+          if (item !== '.git') {
+            results.push(...getAllMdFiles(fullPath))
+          }
+        } else if (item.endsWith('.md')) {
+          results.push(fullPath)
+        }
+      }
+
+      return results
+    }
+
+    const filePaths = getAllMdFiles(basePath)
+
+    const logs = filePaths.map((filePath) => {
+      const content = fs.readFileSync(filePath, 'utf-8')
       const dateMatch = content.match(/date: "(.*?)"/)
       const topicMatch = content.match(/topic: "(.*?)"/)
       const durationMatch = content.match(/duration: "(.*?)"/)
+      const acquisitionMatch = content.match(/## Acquisition\n([\s\S]*?)(?=\n## |$)/)
 
       return {
-        id: file,
+        id: path.relative(basePath, filePath),
         date: dateMatch ? dateMatch[1] : '',
         topic: topicMatch ? topicMatch[1] : 'Unknown',
-        duration: durationMatch ? parseInt(durationMatch[1], 10) : 0
+        duration: durationMatch ? parseInt(durationMatch[1], 10) : 0,
+        acquisition: acquisitionMatch ? acquisitionMatch[1].trim() : ''
       }
     })
 

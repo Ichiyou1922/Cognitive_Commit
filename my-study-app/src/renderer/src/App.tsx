@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   BarChart,
   Bar,
@@ -290,6 +290,7 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
   const [debt, setDebt] = useState('')
   const [nextAction, setNextAction] = useState('')
   const [history, setHistory] = useState<Array<HistoryItem>>([])
+  const topicRef = useRef<HTMLInputElement | null>(null)
 
   const getFormattedDate = () => {
     const now = new Date()
@@ -327,6 +328,24 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
     }
     return undefined
   }, [mode, timeLeft])
+
+  // When returning to idle ensure topic input has focus (fixes packaged-app focus loss)
+  useEffect(() => {
+    if (mode === 'idle') {
+      // slight delay to allow re-render
+      const t = setTimeout(() => {
+        try {
+          topicRef.current?.focus()
+          // also try to focus window
+          ;(window as unknown as Window & { focus?: () => void }).focus?.()
+        } catch (e) {
+          /* ignore */
+        }
+      }, 50)
+      return () => clearTimeout(t)
+    }
+    return undefined
+  }, [mode])
 
   const handleStart = () => {
     const min = parseInt(inputMinutes, 10)
@@ -422,6 +441,7 @@ const MainScreen = ({ onOpenSettings }: { onOpenSettings: () => void }) => {
             <input
               type="text"
               value={topic}
+              ref={topicRef}
               onChange={(e) => setTopic(e.target.value)}
               placeholder="e.g. React Hooks, Linear Algebra..."
               style={{ padding: '10px', fontSize: '18px', width: '300px', textAlign: 'center' }}
